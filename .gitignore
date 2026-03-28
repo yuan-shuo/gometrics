@@ -7,3 +7,5 @@
 
 /metrics/
 /bin/
+
+!metrics.example.yaml
