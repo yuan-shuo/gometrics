@@ -1,5 +1,8 @@
 # gometrics
 
+[![CI](https://github.com/yuan-shuo/gometrics/workflows/ci/badge.svg)](https://github.com/yuan-shuo/gometrics/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/yuan-shuo/gometrics)](https://goreportcard.com/report/github.com/yuan-shuo/gometrics)
+
+
 一个用于生成 Prometheus 指标代码的 Go 代码生成工具。通过 YAML 配置文件定义指标，自动生成类型安全的指标管理代码。
 
 ## 特性
