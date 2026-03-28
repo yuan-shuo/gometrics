@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"go/format"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"text/template"
 
 	"github.com/yuan-shuo/gometrics/internal/config"
@@ -73,11 +75,13 @@ func (g *Generator) Generate(cfg *config.MetricConfig, opts Options) error {
 // getPackageName 从输出目录路径提取包名
 // 例如: "aaa/aaa/bbb" -> "bbb", "." -> "metrics"
 func getPackageName(outputDir string) string {
-	cleanPath := filepath.Clean(outputDir)
-	base := filepath.Base(cleanPath)
+	// 统一使用 / 作为分隔符处理
+	normalized := strings.ReplaceAll(outputDir, "\\", "/")
+	cleanPath := path.Clean(normalized)
+	base := path.Base(cleanPath)
 
 	// 如果路径是 "." 或 "/" 等，使用默认包名
-	if base == "." || base == "/" || base == string(filepath.Separator) || base == "" {
+	if base == "." || base == "/" || base == "" {
 		return "metrics"
 	}
 
