@@ -1,10 +1,18 @@
 name: Go Report Card CI
 
 on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'scripts/**'
   pull_request:
     branches: [ main ]
-  push:
-    branches: [ "**" ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'scripts/**'
 
 jobs:
   quality-gate:
