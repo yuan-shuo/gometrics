@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/format"
 	"os"
@@ -35,7 +36,10 @@ type Metric struct {
 }
 
 type Histogram struct {
-	Metric
+	Name    string    `yaml:"name"`
+	Help    string    `yaml:"help"`
+	Labels  []string  `yaml:"labels"`
+	Methods []string  `yaml:"methods"`
 	Buckets []float64 `yaml:"buckets"`
 }
 
@@ -92,7 +96,6 @@ package metrics
 
 import (
     "github.com/zeromicro/go-zero/core/metric"
-    "user/internal/config"
 )
 
 // ========== Builder ==========
@@ -102,9 +105,9 @@ type builder struct {
     subsystem string
 }
 
-func newBuilder(c config.Config, subsystem string) *builder {
+func newBuilder(namespace, subsystem string) *builder {
     return &builder{
-        namespace: c.Name,
+        namespace: namespace,
         subsystem: subsystem,
     }
 }
@@ -155,8 +158,8 @@ type {{ .Name | toPascal }}Metrics struct {
     {{- end }}
 }
 
-func new{{ .Name | toPascal }}Metrics(c config.Config) *{{ .Name | toPascal }}Metrics {
-    b := newBuilder(c, "{{ .Name }}")
+func new{{ .Name | toPascal }}Metrics(namespace string) *{{ .Name | toPascal }}Metrics {
+    b := newBuilder(namespace, "{{ .Name }}")
     m := &{{ .Name | toPascal }}Metrics{}
 
     {{- range .Counters }}
@@ -256,10 +259,10 @@ type MetricsManager struct {
 }
 
 // NewMetricsManager creates a new metrics manager.
-func NewMetricsManager(c config.Config) *MetricsManager {
+func NewMetricsManager() *MetricsManager {
     return &MetricsManager{
         {{- range .Subsystems }}
-        {{ .Name | toPascal }}: new{{ .Name | toPascal }}Metrics(c),
+        {{ .Name | toPascal }}: new{{ .Name | toPascal }}Metrics("{{ $.ServiceName }}"),
         {{- end }}
     }
 }
@@ -268,10 +271,18 @@ func NewMetricsManager(c config.Config) *MetricsManager {
 // ========== 主函数 ==========
 
 func main() {
+	// 定义命令行参数
+	var (
+		yamlFile   = flag.String("config", "metrics.yaml", "Path to the YAML configuration file")
+		outputDir  = flag.String("out", "internal/metrics", "Output directory for the generated Go file")
+		outputName = flag.String("name", "metrics_gen.go", "Name of the generated Go file")
+	)
+	flag.Parse()
+
 	// 读取 YAML 文件
-	data, err := os.ReadFile("internal/metrics/definition.yaml")
+	data, err := os.ReadFile(*yamlFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading definition.yaml: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error reading YAML file %s: %v\n", *yamlFile, err)
 		os.Exit(1)
 	}
 
@@ -311,12 +322,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 写入文件
-	outputPath := filepath.Join("internal", "metrics", "metrics_gen.go")
-	if err := os.WriteFile(outputPath, formatted, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+	// 确保输出目录存在
+	if err := os.MkdirAll(*outputDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating output directory %s: %v\n", *outputDir, err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Generated internal/metrics/metrics_gen.go")
+	// 写入文件
+	outputPath := filepath.Join(*outputDir, *outputName)
+	if err := os.WriteFile(outputPath, formatted, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file %s: %v\n", outputPath, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Generated %s\n", outputPath)
 }
