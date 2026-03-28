@@ -1,1 +1,1 @@
-./bin/gometrcis.exe -f metrics.yaml -d ./metrics
+./bin/gometrcis.exe -f metrics.example.yaml -d ./metrics
