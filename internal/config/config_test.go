@@ -42,59 +42,124 @@ subsystems:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// 验证 service_name
-	if cfg.ServiceName != "test-service" {
-		t.Errorf("ServiceName = %v, want %v", cfg.ServiceName, "test-service")
-	}
+	// 验证基本结构
+	assertServiceName(t, cfg, "test-service")
+	assertSubsystemCount(t, cfg, 1)
 
 	// 验证子系统
-	if len(cfg.Subsystems) != 1 {
-		t.Fatalf("len(Subsystems) = %v, want %v", len(cfg.Subsystems), 1)
-	}
-
 	subsystem := cfg.Subsystems[0]
-	if subsystem.Name != "api" {
-		t.Errorf("Subsystem.Name = %v, want %v", subsystem.Name, "api")
-	}
+	assertSubsystemName(t, subsystem, "api")
 
 	// 验证 counters
-	if len(subsystem.Counters) != 1 {
-		t.Fatalf("len(Counters) = %v, want %v", len(subsystem.Counters), 1)
-	}
-	counter := subsystem.Counters[0]
-	if counter.Name != "requests_total" {
-		t.Errorf("Counter.Name = %v, want %v", counter.Name, "requests_total")
-	}
-	if counter.Help != "Total requests" {
-		t.Errorf("Counter.Help = %v, want %v", counter.Help, "Total requests")
-	}
-	if len(counter.Labels) != 2 || counter.Labels[0] != "method" || counter.Labels[1] != "path" {
-		t.Errorf("Counter.Labels = %v, want [method path]", counter.Labels)
-	}
-	if len(counter.Methods) != 1 || counter.Methods[0] != "inc" {
-		t.Errorf("Counter.Methods = %v, want [inc]", counter.Methods)
-	}
+	assertCounterCount(t, subsystem, 1)
+	assertCounter(t, subsystem.Counters[0], "requests_total", "Total requests", []string{"method", "path"}, []string{"inc"})
 
 	// 验证 gauges
-	if len(subsystem.Gauges) != 1 {
-		t.Fatalf("len(Gauges) = %v, want %v", len(subsystem.Gauges), 1)
-	}
-	gauge := subsystem.Gauges[0]
-	if gauge.Name != "active_connections" {
-		t.Errorf("Gauge.Name = %v, want %v", gauge.Name, "active_connections")
-	}
+	assertGaugeCount(t, subsystem, 1)
+	assertGaugeName(t, subsystem.Gauges[0], "active_connections")
 
 	// 验证 histograms
-	if len(subsystem.Histograms) != 1 {
-		t.Fatalf("len(Histograms) = %v, want %v", len(subsystem.Histograms), 1)
+	assertHistogramCount(t, subsystem, 1)
+	assertHistogram(t, subsystem.Histograms[0], "request_duration_ms", []float64{10, 50, 100})
+}
+
+func assertServiceName(t *testing.T, cfg *MetricConfig, want string) {
+	t.Helper()
+	if cfg.ServiceName != want {
+		t.Errorf("ServiceName = %v, want %v", cfg.ServiceName, want)
 	}
-	histogram := subsystem.Histograms[0]
-	if histogram.Name != "request_duration_ms" {
-		t.Errorf("Histogram.Name = %v, want %v", histogram.Name, "request_duration_ms")
+}
+
+func assertSubsystemCount(t *testing.T, cfg *MetricConfig, want int) {
+	t.Helper()
+	if len(cfg.Subsystems) != want {
+		t.Fatalf("len(Subsystems) = %v, want %v", len(cfg.Subsystems), want)
 	}
-	if len(histogram.Buckets) != 3 || histogram.Buckets[0] != 10 {
-		t.Errorf("Histogram.Buckets = %v, want [10 50 100]", histogram.Buckets)
+}
+
+func assertSubsystemName(t *testing.T, s Subsystem, want string) {
+	t.Helper()
+	if s.Name != want {
+		t.Errorf("Subsystem.Name = %v, want %v", s.Name, want)
 	}
+}
+
+func assertCounterCount(t *testing.T, s Subsystem, want int) {
+	t.Helper()
+	if len(s.Counters) != want {
+		t.Fatalf("len(Counters) = %v, want %v", len(s.Counters), want)
+	}
+}
+
+func assertCounter(t *testing.T, c Metric, name, help string, labels, methods []string) {
+	t.Helper()
+	if c.Name != name {
+		t.Errorf("Counter.Name = %v, want %v", c.Name, name)
+	}
+	if c.Help != help {
+		t.Errorf("Counter.Help = %v, want %v", c.Help, help)
+	}
+	if !sliceEqual(c.Labels, labels) {
+		t.Errorf("Counter.Labels = %v, want %v", c.Labels, labels)
+	}
+	if !sliceEqual(c.Methods, methods) {
+		t.Errorf("Counter.Methods = %v, want %v", c.Methods, methods)
+	}
+}
+
+func assertGaugeCount(t *testing.T, s Subsystem, want int) {
+	t.Helper()
+	if len(s.Gauges) != want {
+		t.Fatalf("len(Gauges) = %v, want %v", len(s.Gauges), want)
+	}
+}
+
+func assertGaugeName(t *testing.T, g Metric, want string) {
+	t.Helper()
+	if g.Name != want {
+		t.Errorf("Gauge.Name = %v, want %v", g.Name, want)
+	}
+}
+
+func assertHistogramCount(t *testing.T, s Subsystem, want int) {
+	t.Helper()
+	if len(s.Histograms) != want {
+		t.Fatalf("len(Histograms) = %v, want %v", len(s.Histograms), want)
+	}
+}
+
+func assertHistogram(t *testing.T, h Histogram, name string, buckets []float64) {
+	t.Helper()
+	if h.Name != name {
+		t.Errorf("Histogram.Name = %v, want %v", h.Name, name)
+	}
+	if !floatSliceEqual(h.Buckets, buckets) {
+		t.Errorf("Histogram.Buckets = %v, want %v", h.Buckets, buckets)
+	}
+}
+
+func sliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func floatSliceEqual(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestLoad_FileNotExist(t *testing.T) {
