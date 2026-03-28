@@ -159,7 +159,7 @@ type SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }} struct {
 
 {{- if hasMethod .Methods "observe" }}
 // Observe records the observed value.
-func (h *SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Observe(v float64, {{ labelParams .Labels }}) {
+func (h *SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Observe(v int64, {{ labelParams .Labels }}) {
     h.HistogramVec.Observe(v, {{ labelArgs .Labels }})
 }
 {{- end }}
