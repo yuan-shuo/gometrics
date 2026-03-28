@@ -1,0 +1,1 @@
+./bin/gometrcis.exe -f metrics.yaml -d .

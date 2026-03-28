@@ -4,3 +4,6 @@
 *.exe
 
 *_gen.*
+
+/metrics/
+/bin/

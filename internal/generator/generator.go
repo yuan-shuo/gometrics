@@ -1,0 +1,85 @@
+// Package generator 处理指标代码的生成
+package generator
+
+import (
+	"bytes"
+	"fmt"
+	"go/format"
+	"os"
+	"path/filepath"
+	"text/template"
+
+	"github.com/yuan-shuo/gometrics/internal/config"
+	tmplpkg "github.com/yuan-shuo/gometrics/internal/template"
+)
+
+// Options 包含代码生成选项
+type Options struct {
+	OutputDir string
+}
+
+// Generator 负责生成指标代码
+type Generator struct {
+	tmpl *template.Template
+}
+
+// New 创建一个新的生成器
+func New() (*Generator, error) {
+	tmpl, err := template.New("metrics").Funcs(tmplpkg.FuncMap()).Parse(tmplpkg.MetricsTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("parsing template: %w", err)
+	}
+
+	return &Generator{tmpl: tmpl}, nil
+}
+
+// Generate 根据配置生成代码文件
+func (g *Generator) Generate(cfg *config.MetricConfig, opts Options) error {
+	// 准备模板数据
+	data := struct {
+		*config.MetricConfig
+		PackageName string
+	}{
+		MetricConfig: cfg,
+		PackageName:  getPackageName(opts.OutputDir),
+	}
+
+	// 执行模板
+	var buf bytes.Buffer
+	if err := g.tmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("executing template: %w", err)
+	}
+
+	// 格式化代码
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("formatting code: %w\nRaw output:\n%s", err, buf.String())
+	}
+
+	// 确保输出目录存在
+	if err := os.MkdirAll(opts.OutputDir, 0755); err != nil {
+		return fmt.Errorf("creating output directory %s: %w", opts.OutputDir, err)
+	}
+
+	// 写入文件
+	outputPath := filepath.Join(opts.OutputDir, "metrics_gen.go")
+	if err := os.WriteFile(outputPath, formatted, 0644); err != nil {
+		return fmt.Errorf("writing file %s: %w", outputPath, err)
+	}
+
+	return nil
+}
+
+// getPackageName 从输出目录路径提取包名
+// 例如: "aaa/aaa/bbb" -> "bbb", "." -> "metrics"
+func getPackageName(outputDir string) string {
+	cleanPath := filepath.Clean(outputDir)
+	base := filepath.Base(cleanPath)
+
+	// 如果路径是 "." 或 "/" 等，使用默认包名
+	if base == "." || base == "/" || base == string(filepath.Separator) || base == "" {
+		return "metrics"
+	}
+
+	return base
+}
