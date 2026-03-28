@@ -6,3 +6,5 @@
 /bin/
 
 !metrics.example.yaml
+
+**coverage**

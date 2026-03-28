@@ -1,6 +1,6 @@
 # gometrics
 
-[![CI](https://github.com/yuan-shuo/gometrics/workflows/ci/badge.svg)](https://github.com/yuan-shuo/gometrics/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/yuan-shuo/gometrics)](https://goreportcard.com/report/github.com/yuan-shuo/gometrics)
+[![CI](https://github.com/yuan-shuo/gometrics/workflows/ci/badge.svg)](https://github.com/yuan-shuo/gometrics/actions) [![Go Report Card](https://goreportcard.com/badge/github.com/yuan-shuo/gometrics)](https://goreportcard.com/report/github.com/yuan-shuo/gometrics) [![codecov](https://codecov.io/gh/yuan-shuo/gometrics/graph/badge.svg?token=DZBJUNYWI5)](https://codecov.io/gh/yuan-shuo/gometrics)
 
 prometheus指标在各个逻辑代码里到处分散？Inc方法输入参数没形参提示？顺序不对？数量不对Panic？想统一管理、类型安全发现要给每个指标都写结构体和实例方法？指标写完了写PromQL还得回来翻代码？试试这个项目：
 
