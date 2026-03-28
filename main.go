@@ -273,9 +273,8 @@ func NewMetricsManager() *MetricsManager {
 func main() {
 	// 定义命令行参数
 	var (
-		yamlFile   = flag.String("config", "metrics.yaml", "Path to the YAML configuration file")
-		outputDir  = flag.String("out", "internal/metrics", "Output directory for the generated Go file")
-		outputName = flag.String("name", "metrics_gen.go", "Name of the generated Go file")
+		yamlFile  = flag.String("f", "metrics.yaml", "Path to the YAML configuration file")
+		outputDir = flag.String("d", ".", "Output directory for the generated Go file")
 	)
 	flag.Parse()
 
@@ -329,7 +328,7 @@ func main() {
 	}
 
 	// 写入文件
-	outputPath := filepath.Join(*outputDir, *outputName)
+	outputPath := filepath.Join(*outputDir, "metrics_gen.go")
 	if err := os.WriteFile(outputPath, formatted, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing file %s: %v\n", outputPath, err)
 		os.Exit(1)
