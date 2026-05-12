@@ -12,25 +12,32 @@ func TestLoad(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "test.yaml")
 
 	yamlContent := `
-service_name: "test-service"
-subsystems:
-  - name: "api"
-    counters:
-      - name: "requests_total"
-        help: "Total requests"
-        labels: ["method", "path"]
-        methods: ["inc"]
-    gauges:
-      - name: "active_connections"
-        help: "Active connections"
-        labels: ["pool"]
-        methods: ["set", "inc", "dec"]
-    histograms:
-      - name: "request_duration_ms"
-        help: "Request duration"
-        labels: ["method"]
-        buckets: [10, 50, 100]
-        methods: ["observe"]
+service: user
+metrics:
+  - name: requests_total
+    help: Total requests
+    type: counter
+    labels:
+      - name: method
+        vals: ["GET", "POST"]
+      - name: path
+        vals: ["*"]
+    methods: ["inc", "add"]
+  - name: active_connections
+    help: Active connections
+    type: gauge
+    labels:
+      - name: pool
+        vals: ["default", "cache"]
+    methods: ["set", "inc", "dec"]
+  - name: request_duration_ms
+    help: Request duration
+    type: histogram
+    labels:
+      - name: method
+        vals: ["GET", "POST"]
+    buckets: [10, 50, 100]
+    methods: ["observe"]
 `
 	if err := os.WriteFile(testFile, []byte(yamlContent), 0644); err != nil {
 		t.Fatalf("failed to create test file: %v", err)
@@ -42,99 +49,110 @@ subsystems:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// 验证基本结构
-	assertServiceName(t, cfg, "test-service")
-	assertSubsystemCount(t, cfg, 1)
+	// 验证 service
+	if cfg.Service != "user" {
+		t.Errorf("Service = %v, want %v", cfg.Service, "user")
+	}
 
-	// 验证子系统
-	subsystem := cfg.Subsystems[0]
-	assertSubsystemName(t, subsystem, "api")
+	// 验证 metrics 数量
+	if len(cfg.Metrics) != 3 {
+		t.Fatalf("len(Metrics) = %v, want %v", len(cfg.Metrics), 3)
+	}
 
-	// 验证 counters
-	assertCounterCount(t, subsystem, 1)
-	assertCounter(t, subsystem.Counters[0], "requests_total", "Total requests", []string{"method", "path"}, []string{"inc"})
+	// 验证第一个 counter 指标
+	counter := cfg.Metrics[0]
+	if counter.Name != "requests_total" {
+		t.Errorf("Metric[0].Name = %v, want %v", counter.Name, "requests_total")
+	}
+	if counter.Help != "Total requests" {
+		t.Errorf("Metric[0].Help = %v, want %v", counter.Help, "Total requests")
+	}
+	if counter.Type != "counter" {
+		t.Errorf("Metric[0].Type = %v, want %v", counter.Type, "counter")
+	}
+	if len(counter.Labels) != 2 {
+		t.Errorf("Metric[0].Labels len = %v, want %v", len(counter.Labels), 2)
+	}
+	if counter.Labels[0].Name != "method" {
+		t.Errorf("Metric[0].Labels[0].Name = %v, want %v", counter.Labels[0].Name, "method")
+	}
+	if !sliceEqual(counter.Labels[0].Vals, []string{"GET", "POST"}) {
+		t.Errorf("Metric[0].Labels[0].Vals = %v, want %v", counter.Labels[0].Vals, []string{"GET", "POST"})
+	}
+	if !sliceEqual(counter.Methods, []string{"inc", "add"}) {
+		t.Errorf("Metric[0].Methods = %v, want %v", counter.Methods, []string{"inc", "add"})
+	}
 
-	// 验证 gauges
-	assertGaugeCount(t, subsystem, 1)
-	assertGaugeName(t, subsystem.Gauges[0], "active_connections")
+	// 验证 gauge 指标
+	gauge := cfg.Metrics[1]
+	if gauge.Name != "active_connections" {
+		t.Errorf("Metric[1].Name = %v, want %v", gauge.Name, "active_connections")
+	}
+	if gauge.Type != "gauge" {
+		t.Errorf("Metric[1].Type = %v, want %v", gauge.Type, "gauge")
+	}
 
-	// 验证 histograms
-	assertHistogramCount(t, subsystem, 1)
-	assertHistogram(t, subsystem.Histograms[0], "request_duration_ms", []float64{10, 50, 100})
-}
-
-func assertServiceName(t *testing.T, cfg *MetricConfig, want string) {
-	t.Helper()
-	if cfg.ServiceName != want {
-		t.Errorf("ServiceName = %v, want %v", cfg.ServiceName, want)
+	// 验证 histogram 指标
+	histogram := cfg.Metrics[2]
+	if histogram.Name != "request_duration_ms" {
+		t.Errorf("Metric[2].Name = %v, want %v", histogram.Name, "request_duration_ms")
+	}
+	if histogram.Type != "histogram" {
+		t.Errorf("Metric[2].Type = %v, want %v", histogram.Type, "histogram")
+	}
+	if !floatSliceEqual(histogram.Buckets, []float64{10, 50, 100}) {
+		t.Errorf("Metric[2].Buckets = %v, want %v", histogram.Buckets, []float64{10, 50, 100})
 	}
 }
 
-func assertSubsystemCount(t *testing.T, cfg *MetricConfig, want int) {
-	t.Helper()
-	if len(cfg.Subsystems) != want {
-		t.Fatalf("len(Subsystems) = %v, want %v", len(cfg.Subsystems), want)
+func TestLoad_FileNotExist(t *testing.T) {
+	_, err := Load("/nonexistent/path/config.yaml")
+	if err == nil {
+		t.Error("Load() expected error for non-existent file, got nil")
 	}
 }
 
-func assertSubsystemName(t *testing.T, s Subsystem, want string) {
-	t.Helper()
-	if s.Name != want {
-		t.Errorf("Subsystem.Name = %v, want %v", s.Name, want)
+func TestLoad_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "invalid.yaml")
+
+	// 写入无效的 YAML
+	if err := os.WriteFile(testFile, []byte("invalid: yaml: content: ["), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	_, err := Load(testFile)
+	if err == nil {
+		t.Error("Load() expected error for invalid YAML, got nil")
 	}
 }
 
-func assertCounterCount(t *testing.T, s Subsystem, want int) {
-	t.Helper()
-	if len(s.Counters) != want {
-		t.Fatalf("len(Counters) = %v, want %v", len(s.Counters), want)
+func TestMetric_GetLabelNames(t *testing.T) {
+	metric := Metric{
+		Name: "test_metric",
+		Labels: []Label{
+			{Name: "label1", Vals: []string{"a", "b"}},
+			{Name: "label2", Vals: []string{"*"}},
+			{Name: "label3", Vals: []string{"x", "y", "z"}},
+		},
+	}
+
+	names := metric.GetLabelNames()
+	expected := []string{"label1", "label2", "label3"}
+	if !sliceEqual(names, expected) {
+		t.Errorf("GetLabelNames() = %v, want %v", names, expected)
 	}
 }
 
-func assertCounter(t *testing.T, c Metric, name, help string, labels, methods []string) {
-	t.Helper()
-	if c.Name != name {
-		t.Errorf("Counter.Name = %v, want %v", c.Name, name)
+func TestMetric_GetLabelNames_Empty(t *testing.T) {
+	metric := Metric{
+		Name:   "test_metric",
+		Labels: []Label{},
 	}
-	if c.Help != help {
-		t.Errorf("Counter.Help = %v, want %v", c.Help, help)
-	}
-	if !sliceEqual(c.Labels, labels) {
-		t.Errorf("Counter.Labels = %v, want %v", c.Labels, labels)
-	}
-	if !sliceEqual(c.Methods, methods) {
-		t.Errorf("Counter.Methods = %v, want %v", c.Methods, methods)
-	}
-}
 
-func assertGaugeCount(t *testing.T, s Subsystem, want int) {
-	t.Helper()
-	if len(s.Gauges) != want {
-		t.Fatalf("len(Gauges) = %v, want %v", len(s.Gauges), want)
-	}
-}
-
-func assertGaugeName(t *testing.T, g Metric, want string) {
-	t.Helper()
-	if g.Name != want {
-		t.Errorf("Gauge.Name = %v, want %v", g.Name, want)
-	}
-}
-
-func assertHistogramCount(t *testing.T, s Subsystem, want int) {
-	t.Helper()
-	if len(s.Histograms) != want {
-		t.Fatalf("len(Histograms) = %v, want %v", len(s.Histograms), want)
-	}
-}
-
-func assertHistogram(t *testing.T, h Histogram, name string, buckets []float64) {
-	t.Helper()
-	if h.Name != name {
-		t.Errorf("Histogram.Name = %v, want %v", h.Name, name)
-	}
-	if !floatSliceEqual(h.Buckets, buckets) {
-		t.Errorf("Histogram.Buckets = %v, want %v", h.Buckets, buckets)
+	names := metric.GetLabelNames()
+	if len(names) != 0 {
+		t.Errorf("GetLabelNames() = %v, want empty slice", names)
 	}
 }
 
@@ -160,26 +178,4 @@ func floatSliceEqual(a, b []float64) bool {
 		}
 	}
 	return true
-}
-
-func TestLoad_FileNotExist(t *testing.T) {
-	_, err := Load("/nonexistent/path/config.yaml")
-	if err == nil {
-		t.Error("Load() expected error for non-existent file, got nil")
-	}
-}
-
-func TestLoad_InvalidYAML(t *testing.T) {
-	tmpDir := t.TempDir()
-	testFile := filepath.Join(tmpDir, "invalid.yaml")
-
-	// 写入无效的 YAML
-	if err := os.WriteFile(testFile, []byte("invalid: yaml: content: ["), 0644); err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-
-	_, err := Load(testFile)
-	if err == nil {
-		t.Error("Load() expected error for invalid YAML, got nil")
-	}
 }

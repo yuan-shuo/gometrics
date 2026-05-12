@@ -27,37 +27,31 @@ func TestGenerate(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "testmetrics")
 
-	// 创建测试配置
+	// 创建测试配置 - 使用新的扁平结构
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
+		Service: "test-service",
+		Metrics: []config.Metric{
 			{
-				Name: "api",
-				Counters: []config.Metric{
-					{
-						Name:    "requests_total",
-						Help:    "Total requests",
-						Labels:  []string{"method"},
-						Methods: []string{"inc"},
-					},
-				},
-				Gauges: []config.Metric{
-					{
-						Name:    "active_connections",
-						Help:    "Active connections",
-						Labels:  []string{"pool"},
-						Methods: []string{"set"},
-					},
-				},
-				Histograms: []config.Histogram{
-					{
-						Name:    "request_duration_ms",
-						Help:    "Request duration",
-						Labels:  []string{"path"},
-						Methods: []string{"observe"},
-						Buckets: []float64{10, 50, 100},
-					},
-				},
+				Name:    "requests_total",
+				Help:    "Total requests",
+				Type:    "counter",
+				Labels:  []config.Label{{Name: "method", Vals: []string{"GET", "POST"}}},
+				Methods: []string{"inc"},
+			},
+			{
+				Name:    "active_connections",
+				Help:    "Active connections",
+				Type:    "gauge",
+				Labels:  []config.Label{{Name: "pool", Vals: []string{"default", "cache"}}},
+				Methods: []string{"set", "inc", "dec"},
+			},
+			{
+				Name:    "request_duration_ms",
+				Help:    "Request duration",
+				Type:    "histogram",
+				Labels:  []config.Label{{Name: "path", Vals: []string{"*"}}},
+				Methods: []string{"observe"},
+				Buckets: []float64{10, 50, 100},
 			},
 		},
 	}
@@ -92,17 +86,16 @@ func TestGenerate(t *testing.T) {
 		t.Error("Generated file does not contain correct package name")
 	}
 
-	// 验证包含关键结构（使用制表符而非空格，因为生成的代码使用制表符缩进）
+	// 验证包含关键结构
 	expectedContents := []string{
-		"type ApiMetrics struct",
+		"type Metrics struct",
 		"RequestsTotal",
-		"*SafeCounter_RequestsTotal",
+		"*RequestsTotalMetric",
 		"ActiveConnections",
-		"*SafeGauge_ActiveConnections",
+		"*ActiveConnectionsMetric",
 		"RequestDurationMs",
-		"*SafeHistogram_RequestDurationMs",
-		"func NewMetricsManager()",
-		"namespace:",
+		"*RequestDurationMsMetric",
+		"func NewMetrics()",
 		"test-service",
 	}
 
@@ -148,13 +141,14 @@ func TestGenerate_InvalidOutputDir(t *testing.T) {
 	}
 
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
+		Service: "test-service",
+		Metrics: []config.Metric{
 			{
-				Name: "api",
-				Counters: []config.Metric{
-					{Name: "requests_total", Help: "Total requests", Labels: []string{}, Methods: []string{"inc"}},
-				},
+				Name:    "requests_total",
+				Help:    "Total requests",
+				Type:    "counter",
+				Labels:  []config.Label{},
+				Methods: []string{"inc"},
 			},
 		},
 	}
@@ -189,13 +183,14 @@ func TestGenerate_ReadOnlyOutputDir(t *testing.T) {
 	defer os.Chmod(readOnlyDir, 0755) // 清理时恢复权限
 
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
+		Service: "test-service",
+		Metrics: []config.Metric{
 			{
-				Name: "api",
-				Counters: []config.Metric{
-					{Name: "requests_total", Help: "Total requests", Labels: []string{}, Methods: []string{"inc"}},
-				},
+				Name:    "requests_total",
+				Help:    "Total requests",
+				Type:    "counter",
+				Labels:  []config.Label{},
+				Methods: []string{"inc"},
 			},
 		},
 	}
@@ -212,20 +207,13 @@ func TestGenerate_ReadOnlyOutputDir(t *testing.T) {
 	}
 }
 
-func TestGenerate_EmptySubsystem(t *testing.T) {
+func TestGenerate_EmptyMetrics(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "empty")
 
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
-			{
-				Name:       "empty",
-				Counters:   []config.Metric{},
-				Gauges:     []config.Metric{},
-				Histograms: []config.Histogram{},
-			},
-		},
+		Service: "test-service",
+		Metrics: []config.Metric{},
 	}
 
 	gen, err := New()
@@ -235,7 +223,7 @@ func TestGenerate_EmptySubsystem(t *testing.T) {
 
 	opts := Options{OutputDir: outputDir}
 	if err := gen.Generate(cfg, opts); err != nil {
-		t.Fatalf("Generate() with empty subsystem error = %v", err)
+		t.Fatalf("Generate() with empty metrics error = %v", err)
 	}
 
 	outputFile := filepath.Join(outputDir, "metrics_gen.go")
@@ -244,30 +232,34 @@ func TestGenerate_EmptySubsystem(t *testing.T) {
 	}
 }
 
-func TestGenerate_MultipleSubsystems(t *testing.T) {
+func TestGenerate_MultipleMetrics(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "multi")
 
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
+		Service: "test-service",
+		Metrics: []config.Metric{
 			{
-				Name: "api",
-				Counters: []config.Metric{
-					{Name: "requests_total", Help: "Total requests", Labels: []string{"method"}, Methods: []string{"inc"}},
-				},
+				Name:    "requests_total",
+				Help:    "Total requests",
+				Type:    "counter",
+				Labels:  []config.Label{{Name: "method", Vals: []string{"GET", "POST"}}},
+				Methods: []string{"inc"},
 			},
 			{
-				Name: "db",
-				Gauges: []config.Metric{
-					{Name: "connections", Help: "Active connections", Labels: []string{}, Methods: []string{"set"}},
-				},
+				Name:    "connections",
+				Help:    "Active connections",
+				Type:    "gauge",
+				Labels:  []config.Label{},
+				Methods: []string{"set"},
 			},
 			{
-				Name: "cache",
-				Histograms: []config.Histogram{
-					{Name: "latency_ms", Help: "Cache latency", Labels: []string{}, Methods: []string{"observe"}, Buckets: []float64{1, 10, 100}},
-				},
+				Name:    "latency_ms",
+				Help:    "Latency",
+				Type:    "histogram",
+				Labels:  []config.Label{},
+				Methods: []string{"observe"},
+				Buckets: []float64{1, 10, 100},
 			},
 		},
 	}
@@ -289,11 +281,12 @@ func TestGenerate_MultipleSubsystems(t *testing.T) {
 	}
 	contentStr := string(content)
 
-	// 验证包含所有子系统的结构
+	// 验证包含所有指标的结构
 	expectedStructs := []string{
-		"type ApiMetrics struct",
-		"type DbMetrics struct",
-		"type CacheMetrics struct",
+		"type Metrics struct",
+		"RequestsTotal",
+		"Connections",
+		"LatencyMs",
 	}
 	for _, expected := range expectedStructs {
 		if !strings.Contains(contentStr, expected) {
@@ -307,18 +300,18 @@ func TestGenerate_MetricWithMultipleLabels(t *testing.T) {
 	outputDir := filepath.Join(tmpDir, "labels")
 
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
+		Service: "test-service",
+		Metrics: []config.Metric{
 			{
-				Name: "api",
-				Counters: []config.Metric{
-					{
-						Name:    "requests_total",
-						Help:    "Total requests",
-						Labels:  []string{"method", "path", "status"},
-						Methods: []string{"inc"},
-					},
+				Name:   "requests_total",
+				Help:   "Total requests",
+				Type:   "counter",
+				Labels: []config.Label{
+					{Name: "method", Vals: []string{"GET", "POST"}},
+					{Name: "path", Vals: []string{"*"}},
+					{Name: "status", Vals: []string{"200", "404", "500"}},
 				},
+				Methods: []string{"inc"},
 			},
 		},
 	}
@@ -351,18 +344,14 @@ func TestGenerate_MultipleMethods(t *testing.T) {
 	outputDir := filepath.Join(tmpDir, "methods")
 
 	cfg := &config.MetricConfig{
-		ServiceName: "test-service",
-		Subsystems: []config.Subsystem{
+		Service: "test-service",
+		Metrics: []config.Metric{
 			{
-				Name: "api",
-				Counters: []config.Metric{
-					{
-						Name:    "requests_total",
-						Help:    "Total requests",
-						Labels:  []string{},
-						Methods: []string{"inc", "add"},
-					},
-				},
+				Name:    "requests_total",
+				Help:    "Total requests",
+				Type:    "counter",
+				Labels:  []config.Label{},
+				Methods: []string{"inc", "add"},
 			},
 		},
 	}
@@ -385,7 +374,56 @@ func TestGenerate_MultipleMethods(t *testing.T) {
 	contentStr := string(content)
 
 	// 验证多个方法被生成
-	if !strings.Contains(contentStr, "func (c *SafeCounter") {
+	if !strings.Contains(contentStr, "func (m *RequestsTotalMetric)") {
 		t.Error("Generated file should contain counter methods")
+	}
+}
+
+func TestGenerate_EnumLabels(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "enums")
+
+	cfg := &config.MetricConfig{
+		Service: "test-service",
+		Metrics: []config.Metric{
+			{
+				Name:   "requests_total",
+				Help:   "Total requests",
+				Type:   "counter",
+				Labels: []config.Label{
+					{Name: "source", Vals: []string{"app", "web"}},
+				},
+				Methods: []string{"inc"},
+			},
+		},
+	}
+
+	gen, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	opts := Options{OutputDir: outputDir}
+	if err := gen.Generate(cfg, opts); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	outputFile := filepath.Join(outputDir, "metrics_gen.go")
+	content, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("Failed to read generated file: %v", err)
+	}
+	contentStr := string(content)
+
+	// 验证枚举类型被生成
+	expectedContents := []string{
+		"type RequestsTotalSource interface",
+		"RequestsTotalSourceApp",
+		"RequestsTotalSourceWeb",
+	}
+	for _, expected := range expectedContents {
+		if !strings.Contains(contentStr, expected) {
+			t.Errorf("Generated file missing expected content: %s", expected)
+		}
 	}
 }
