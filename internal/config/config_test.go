@@ -49,59 +49,75 @@ metrics:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// 验证 service
-	if cfg.Service != "user" {
-		t.Errorf("Service = %v, want %v", cfg.Service, "user")
-	}
+	// 验证基本结构
+	assertService(t, cfg, "user")
+	assertMetricsCount(t, cfg, 3)
 
-	// 验证 metrics 数量
-	if len(cfg.Metrics) != 3 {
-		t.Fatalf("len(Metrics) = %v, want %v", len(cfg.Metrics), 3)
-	}
+	// 验证各个指标
+	assertCounterMetric(t, cfg.Metrics[0])
+	assertGaugeMetric(t, cfg.Metrics[1])
+	assertHistogramMetric(t, cfg.Metrics[2])
+}
 
-	// 验证第一个 counter 指标
-	counter := cfg.Metrics[0]
-	if counter.Name != "requests_total" {
-		t.Errorf("Metric[0].Name = %v, want %v", counter.Name, "requests_total")
+func assertService(t *testing.T, cfg *MetricConfig, want string) {
+	t.Helper()
+	if cfg.Service != want {
+		t.Errorf("Service = %v, want %v", cfg.Service, want)
 	}
-	if counter.Help != "Total requests" {
-		t.Errorf("Metric[0].Help = %v, want %v", counter.Help, "Total requests")
-	}
-	if counter.Type != "counter" {
-		t.Errorf("Metric[0].Type = %v, want %v", counter.Type, "counter")
-	}
-	if len(counter.Labels) != 2 {
-		t.Errorf("Metric[0].Labels len = %v, want %v", len(counter.Labels), 2)
-	}
-	if counter.Labels[0].Name != "method" {
-		t.Errorf("Metric[0].Labels[0].Name = %v, want %v", counter.Labels[0].Name, "method")
-	}
-	if !sliceEqual(counter.Labels[0].Vals, []string{"GET", "POST"}) {
-		t.Errorf("Metric[0].Labels[0].Vals = %v, want %v", counter.Labels[0].Vals, []string{"GET", "POST"})
-	}
-	if !sliceEqual(counter.Methods, []string{"inc", "add"}) {
-		t.Errorf("Metric[0].Methods = %v, want %v", counter.Methods, []string{"inc", "add"})
-	}
+}
 
-	// 验证 gauge 指标
-	gauge := cfg.Metrics[1]
-	if gauge.Name != "active_connections" {
-		t.Errorf("Metric[1].Name = %v, want %v", gauge.Name, "active_connections")
+func assertMetricsCount(t *testing.T, cfg *MetricConfig, want int) {
+	t.Helper()
+	if len(cfg.Metrics) != want {
+		t.Fatalf("len(Metrics) = %v, want %v", len(cfg.Metrics), want)
 	}
-	if gauge.Type != "gauge" {
-		t.Errorf("Metric[1].Type = %v, want %v", gauge.Type, "gauge")
-	}
+}
 
-	// 验证 histogram 指标
-	histogram := cfg.Metrics[2]
-	if histogram.Name != "request_duration_ms" {
-		t.Errorf("Metric[2].Name = %v, want %v", histogram.Name, "request_duration_ms")
+func assertCounterMetric(t *testing.T, m Metric) {
+	t.Helper()
+	if m.Name != "requests_total" {
+		t.Errorf("Name = %v, want %v", m.Name, "requests_total")
 	}
-	if histogram.Type != "histogram" {
-		t.Errorf("Metric[2].Type = %v, want %v", histogram.Type, "histogram")
+	if m.Help != "Total requests" {
+		t.Errorf("Help = %v, want %v", m.Help, "Total requests")
 	}
-	if !floatSliceEqual(histogram.Buckets, []float64{10, 50, 100}) {
-		t.Errorf("Metric[2].Buckets = %v, want %v", histogram.Buckets, []float64{10, 50, 100})
+	if m.Type != "counter" {
+		t.Errorf("Type = %v, want %v", m.Type, "counter")
+	}
+	if len(m.Labels) != 2 {
+		t.Errorf("Labels len = %v, want %v", len(m.Labels), 2)
+	}
+	if m.Labels[0].Name != "method" {
+		t.Errorf("Labels[0].Name = %v, want %v", m.Labels[0].Name, "method")
+	}
+	if !sliceEqual(m.Labels[0].Vals, []string{"GET", "POST"}) {
+		t.Errorf("Labels[0].Vals = %v, want %v", m.Labels[0].Vals, []string{"GET", "POST"})
+	}
+	if !sliceEqual(m.Methods, []string{"inc", "add"}) {
+		t.Errorf("Methods = %v, want %v", m.Methods, []string{"inc", "add"})
+	}
+}
+
+func assertGaugeMetric(t *testing.T, m Metric) {
+	t.Helper()
+	if m.Name != "active_connections" {
+		t.Errorf("Name = %v, want %v", m.Name, "active_connections")
+	}
+	if m.Type != "gauge" {
+		t.Errorf("Type = %v, want %v", m.Type, "gauge")
+	}
+}
+
+func assertHistogramMetric(t *testing.T, m Metric) {
+	t.Helper()
+	if m.Name != "request_duration_ms" {
+		t.Errorf("Name = %v, want %v", m.Name, "request_duration_ms")
+	}
+	if m.Type != "histogram" {
+		t.Errorf("Type = %v, want %v", m.Type, "histogram")
+	}
+	if !floatSliceEqual(m.Buckets, []float64{10, 50, 100}) {
+		t.Errorf("Buckets = %v, want %v", m.Buckets, []float64{10, 50, 100})
 	}
 }
 
