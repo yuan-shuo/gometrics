@@ -303,9 +303,9 @@ func TestGenerate_MetricWithMultipleLabels(t *testing.T) {
 		Service: "test-service",
 		Metrics: []config.Metric{
 			{
-				Name:   "requests_total",
-				Help:   "Total requests",
-				Type:   "counter",
+				Name: "requests_total",
+				Help: "Total requests",
+				Type: "counter",
 				Labels: []config.Label{
 					{Name: "method", Vals: []string{"GET", "POST"}},
 					{Name: "path", Vals: []string{"*"}},
@@ -387,9 +387,9 @@ func TestGenerate_EnumLabels(t *testing.T) {
 		Service: "test-service",
 		Metrics: []config.Metric{
 			{
-				Name:   "requests_total",
-				Help:   "Total requests",
-				Type:   "counter",
+				Name: "requests_total",
+				Help: "Total requests",
+				Type: "counter",
 				Labels: []config.Label{
 					{Name: "source", Vals: []string{"app", "web"}},
 				},

@@ -22,11 +22,11 @@ type Label struct {
 
 // Metric 表示单个指标配置
 type Metric struct {
-	Name    string  `yaml:"name"`
-	Help    string  `yaml:"help"`
-	Type    string  `yaml:"type"`
-	Labels  []Label `yaml:"labels"`
-	Methods []string `yaml:"methods"`
+	Name    string    `yaml:"name"`
+	Help    string    `yaml:"help"`
+	Type    string    `yaml:"type"`
+	Labels  []Label   `yaml:"labels"`
+	Methods []string  `yaml:"methods"`
 	Buckets []float64 `yaml:"buckets"`
 }
 
