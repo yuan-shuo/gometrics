@@ -39,11 +39,13 @@ func New() (*Generator, error) {
 func (g *Generator) Generate(cfg *config.MetricConfig, opts Options) error {
 	// 准备模板数据
 	data := struct {
-		*config.MetricConfig
+		Service     string
+		Metrics     []config.Metric
 		PackageName string
 	}{
-		MetricConfig: cfg,
-		PackageName:  getPackageName(opts.OutputDir),
+		Service:     cfg.Service,
+		Metrics:     cfg.Metrics,
+		PackageName: getPackageName(opts.OutputDir),
 	}
 
 	// 执行模板

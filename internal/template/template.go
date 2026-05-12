@@ -4,6 +4,8 @@ package template
 import (
 	"strings"
 	"text/template"
+
+	"github.com/yuan-shuo/gometrics/internal/config"
 )
 
 // MetricsTemplate 是生成指标代码的模板字符串
@@ -16,22 +18,20 @@ import (
 
 // ========== Builder ==========
 
+// builder 是指标构建器的内部实现
 type builder struct {
+    // namespace 是指标的命名空间，对应 YAML 中的 service 字段
     namespace string
-    subsystem string
 }
 
-func newBuilder(namespace, subsystem string) *builder {
-    return &builder{
-        namespace: namespace,
-        subsystem: subsystem,
-    }
+// newBuilder 创建一个新的指标构建器
+func newBuilder(namespace string) *builder {
+    return &builder{namespace: namespace}
 }
 
 func (b *builder) newCounterVec(name, help string, labels []string) metric.CounterVec {
     return metric.NewCounterVec(&metric.CounterVecOpts{
         Namespace: b.namespace,
-        Subsystem: b.subsystem,
         Name:      name,
         Help:      help,
         Labels:    labels,
@@ -41,7 +41,6 @@ func (b *builder) newCounterVec(name, help string, labels []string) metric.Count
 func (b *builder) newGaugeVec(name, help string, labels []string) metric.GaugeVec {
     return metric.NewGaugeVec(&metric.GaugeVecOpts{
         Namespace: b.namespace,
-        Subsystem: b.subsystem,
         Name:      name,
         Help:      help,
         Labels:    labels,
@@ -51,7 +50,6 @@ func (b *builder) newGaugeVec(name, help string, labels []string) metric.GaugeVe
 func (b *builder) newHistogramVec(name, help string, buckets []float64, labels []string) metric.HistogramVec {
     return metric.NewHistogramVec(&metric.HistogramVecOpts{
         Namespace: b.namespace,
-        Subsystem: b.subsystem,
         Name:      name,
         Help:      help,
         Buckets:   buckets,
@@ -59,129 +57,150 @@ func (b *builder) newHistogramVec(name, help string, buckets []float64, labels [
     })
 }
 
-{{- range .Subsystems }}
-// ========== Subsystem: {{ .Name }} ==========
+// ========== Enums ==========
+{{ range $metric := .Metrics }}
+{{ range $label := $metric.Labels }}
+{{ if isEnum $label.Vals }}
+// {{ $metric.Name | toPascal }}{{ $label.Name | toPascal }} 是指标 [{{ $metric.Name }}] 的标签 [{{ $label.Name }}] 的枚举类型
+// 用于将指标 {{ $metric.Name }} 的 {{ $label.Name }} 标签设置为以下值之一：{{ join $label.Vals ", " }}
+type {{ $metric.Name | toPascal }}{{ $label.Name | toPascal }} interface {
+    {{ $metric.Name | camelCase }}{{ $label.Name | camelCase }}Value() string
+}
 
-type {{ .Name | toPascal }}Metrics struct {
-    {{- range .Counters }}
-    {{ .Name | toPascal }} *SafeCounter{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}
-    {{- end }}
-    {{- range .Gauges }}
-    {{ .Name | toPascal }} *SafeGauge{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}
-    {{- end }}
-    {{- range .Histograms }}
-    {{ .Name | toPascal }} *SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}
+type {{ $metric.Name | camelCase }}{{ $label.Name | camelCase }}Impl struct{ v string }
+
+func (s {{ $metric.Name | camelCase }}{{ $label.Name | camelCase }}Impl) {{ $metric.Name | camelCase }}{{ $label.Name | camelCase }}Value() string { return s.v }
+
+var (
+{{- range $val := $label.Vals }}
+    // {{ $metric.Name | toPascal }}{{ $label.Name | toPascal }}{{ $val | toPascal }} 将指标 [{{ $metric.Name }}] 的 [{{ $label.Name }}] 标签设置为 "{{ $val }}"
+    {{ $metric.Name | toPascal }}{{ $label.Name | toPascal }}{{ $val | toPascal }} {{ $metric.Name | toPascal }}{{ $label.Name | toPascal }} = {{ $metric.Name | camelCase }}{{ $label.Name | camelCase }}Impl{"{{ $val }}"}
+{{- end }}
+)
+{{ end }}
+{{ end }}
+{{ end }}
+
+// ========== Metrics Struct ==========
+
+// Metrics 包含所有生成的指标实例
+// 通过 NewMetrics() 创建，所有指标共享相同的 service 标签值 [{{ .Service }}]
+type Metrics struct {
+    {{- range .Metrics }}
+    // {{ .Name | toPascal }} 对应指标：{{ .Name }}{service="{{ $.Service }}"{{ range .Labels }}, {{ .Name }}=...{{ end }}}
+    //
+    // 	- 类型: {{ .Type }}
+    // 	- 说明: {{ .Help }}
+    {{ .Name | toPascal }} *{{ .Name | toPascal }}Metric
     {{- end }}
 }
 
-func new{{ .Name | toPascal }}Metrics(namespace string) *{{ .Name | toPascal }}Metrics {
-    b := newBuilder(namespace, "{{ .Name }}")
-    m := &{{ .Name | toPascal }}Metrics{}
-
-    {{- range .Counters }}
-    m.{{ .Name | toPascal }} = &SafeCounter{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}{
-        CounterVec: b.newCounterVec("{{ .Name }}", "{{ .Help }}", {{ printf "%#v" .Labels }}),
-    }
+// NewMetrics 创建一个新的 Metrics 实例
+// 所有指标将自动带有 service="{{ .Service }}" 的标签
+func NewMetrics() *Metrics {
+    b := newBuilder("{{ .Service }}")
+    m := &Metrics{}
+    {{- range .Metrics }}
+    m.{{ .Name | toPascal }} = new{{ .Name | toPascal }}Metric(b)
     {{- end }}
-    {{- range .Gauges }}
-    m.{{ .Name | toPascal }} = &SafeGauge{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}{
-        GaugeVec: b.newGaugeVec("{{ .Name }}", "{{ .Help }}", {{ printf "%#v" .Labels }}),
-    }
-    {{- end }}
-    {{- range .Histograms }}
-    m.{{ .Name | toPascal }} = &SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}{
-        HistogramVec: b.newHistogramVec("{{ .Name }}", "{{ .Help }}", {{ printf "%#v" .Buckets }}, {{ printf "%#v" .Labels }}),
-    }
-    {{- end }}
-
     return m
 }
-{{- end }}
 
-{{- range .Subsystems }}
-{{- range .Counters }}
-// ========== SafeCounter for {{ .Name }} ==========
+{{- range $metric := .Metrics }}
+// ========== {{ $metric.Name }} ==========
 
-type SafeCounter{{ if .Labels }}_{{ .Name | toPascal }}{{ end }} struct {
+// {{ $metric.Name | toPascal }}Metric 是指标 [{{ $metric.Name }}] 的封装
+// Prometheus 格式：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}}
+// 类型: {{ $metric.Type }}
+// 说明: {{ $metric.Help }}
+// 标签:{{ range $metric.Labels }} {{ .Name }}{{ end }}
+type {{ $metric.Name | toPascal }}Metric struct {
+    {{- if eq $metric.Type "counter" }}
     metric.CounterVec
-}
-
-{{- if hasMethod .Methods "inc" }}
-// Inc increments the counter with the given labels.
-func (c *SafeCounter{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Inc({{ labelParams .Labels }}) {
-    c.CounterVec.Inc({{ labelArgs .Labels }})
-}
-{{- end }}
-
-{{- if hasMethod .Methods "add" }}
-// Add adds the given value to the counter.
-func (c *SafeCounter{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Add(v float64, {{ labelParams .Labels }}) {
-    c.CounterVec.Add(v, {{ labelArgs .Labels }})
-}
-{{- end }}
-{{- end }}
-
-{{- range .Gauges }}
-// ========== SafeGauge for {{ .Name }} ==========
-
-type SafeGauge{{ if .Labels }}_{{ .Name | toPascal }}{{ end }} struct {
+    {{- else if eq $metric.Type "gauge" }}
     metric.GaugeVec
-}
-
-{{- if hasMethod .Methods "set" }}
-// Set sets the gauge value.
-func (g *SafeGauge{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Set(v float64, {{ labelParams .Labels }}) {
-    g.GaugeVec.Set(v, {{ labelArgs .Labels }})
-}
-{{- end }}
-
-{{- if hasMethod .Methods "inc" }}
-// Inc increments the gauge by 1.
-func (g *SafeGauge{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Inc({{ labelParams .Labels }}) {
-    g.GaugeVec.Inc({{ labelArgs .Labels }})
-}
-{{- end }}
-
-{{- if hasMethod .Methods "dec" }}
-// Dec decrements the gauge by 1.
-func (g *SafeGauge{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Dec({{ labelParams .Labels }}) {
-    g.GaugeVec.Dec({{ labelArgs .Labels }})
-}
-{{- end }}
-{{- end }}
-
-{{- range .Histograms }}
-// ========== SafeHistogram for {{ .Name }} ==========
-
-type SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }} struct {
+    {{- else if eq $metric.Type "histogram" }}
     metric.HistogramVec
-}
-
-{{- if hasMethod .Methods "observe" }}
-// Observe records the observed value.
-func (h *SafeHistogram{{ if .Labels }}_{{ .Name | toPascal }}{{ end }}) Observe(v int64, {{ labelParams .Labels }}) {
-    h.HistogramVec.Observe(v, {{ labelArgs .Labels }})
-}
-{{- end }}
-{{- end }}
-{{- end }}
-
-// ========== MetricsManager ==========
-
-type MetricsManager struct {
-    {{- range .Subsystems }}
-    {{ .Name | toPascal }} *{{ .Name | toPascal }}Metrics
     {{- end }}
 }
 
-// NewMetricsManager creates a new metrics manager.
-func NewMetricsManager() *MetricsManager {
-    return &MetricsManager{
-        {{- range .Subsystems }}
-        {{ .Name | toPascal }}: new{{ .Name | toPascal }}Metrics("{{ $.ServiceName }}"),
+func new{{ $metric.Name | toPascal }}Metric(b *builder) *{{ $metric.Name | toPascal }}Metric {
+    labels := []string{"service"{{ range $metric.Labels }}, "{{ .Name }}"{{ end }}}
+    return &{{ $metric.Name | toPascal }}Metric{
+        {{- if eq $metric.Type "counter" }}
+        CounterVec: b.newCounterVec("{{ $metric.Name }}", "{{ $metric.Help }}", labels),
+        {{- else if eq $metric.Type "gauge" }}
+        GaugeVec: b.newGaugeVec("{{ $metric.Name }}", "{{ $metric.Help }}", labels),
+        {{- else if eq $metric.Type "histogram" }}
+        HistogramVec: b.newHistogramVec("{{ $metric.Name }}", "{{ $metric.Help }}", {{ printf "%#v" $metric.Buckets }}, labels),
         {{- end }}
     }
 }
+{{- if eq $metric.Type "counter" }}
+{{- if hasMethod $metric.Methods "inc" }}
+
+// Inc 将计数器值加 1
+// 生成的指标：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}} += 1
+// 参数说明：{{ range $metric.Labels }}
+//   - {{ .Name }}: {{ if isEnum .Vals }}可用变量：{{ enumVars $metric.Name .Name .Vals }}{{ else }}任意字符串{{ end }}{{ end }}
+func (m *{{ $metric.Name | toPascal }}Metric) Inc({{ labelParams $metric.Name $metric.Labels }}) {
+    m.CounterVec.Inc("{{ $.Service }}"{{ range $metric.Labels }}, {{ labelArg . $metric.Name }}{{ end }})
+}
+{{- end }}
+{{- if hasMethod $metric.Methods "add" }}
+
+// Add 将计数器值增加 v
+// 生成的指标：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}} += v
+// 参数说明：{{ range $metric.Labels }}
+//   - {{ .Name }}: {{ if isEnum .Vals }}可用变量：{{ enumVars $metric.Name .Name .Vals }}{{ else }}任意字符串{{ end }}{{ end }}
+func (m *{{ $metric.Name | toPascal }}Metric) Add(v float64, {{ labelParams $metric.Name $metric.Labels }}) {
+    m.CounterVec.Add(v, "{{ $.Service }}"{{ range $metric.Labels }}, {{ labelArg . $metric.Name }}{{ end }})
+}
+{{- end }}
+{{- else if eq $metric.Type "gauge" }}
+{{- if hasMethod $metric.Methods "set" }}
+
+// Set 设置仪表盘的值
+// 生成的指标：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}} = v
+// 参数说明：{{ range $metric.Labels }}
+//   - {{ .Name }}: {{ if isEnum .Vals }}可用变量：{{ enumVars $metric.Name .Name .Vals }}{{ else }}任意字符串{{ end }}{{ end }}
+func (m *{{ $metric.Name | toPascal }}Metric) Set(v float64, {{ labelParams $metric.Name $metric.Labels }}) {
+    m.GaugeVec.Set(v, "{{ $.Service }}"{{ range $metric.Labels }}, {{ labelArg . $metric.Name }}{{ end }})
+}
+{{- end }}
+{{- if hasMethod $metric.Methods "inc" }}
+
+// Inc 将仪表盘值加 1
+// 生成的指标：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}} += 1
+// 参数说明：{{ range $metric.Labels }}
+//   - {{ .Name }}: {{ if isEnum .Vals }}可用变量：{{ enumVars $metric.Name .Name .Vals }}{{ else }}任意字符串{{ end }}{{ end }}
+func (m *{{ $metric.Name | toPascal }}Metric) Inc({{ labelParams $metric.Name $metric.Labels }}) {
+    m.GaugeVec.Inc("{{ $.Service }}"{{ range $metric.Labels }}, {{ labelArg . $metric.Name }}{{ end }})
+}
+{{- end }}
+{{- if hasMethod $metric.Methods "dec" }}
+
+// Dec 将仪表盘值减 1
+// 生成的指标：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}} -= 1
+// 参数说明：{{ range $metric.Labels }}
+//   - {{ .Name }}: {{ if isEnum .Vals }}可用变量：{{ enumVars $metric.Name .Name .Vals }}{{ else }}任意字符串{{ end }}{{ end }}
+func (m *{{ $metric.Name | toPascal }}Metric) Dec({{ labelParams $metric.Name $metric.Labels }}) {
+    m.GaugeVec.Dec("{{ $.Service }}"{{ range $metric.Labels }}, {{ labelArg . $metric.Name }}{{ end }})
+}
+{{- end }}
+{{- else if eq $metric.Type "histogram" }}
+{{- if hasMethod $metric.Methods "observe" }}
+
+// Observe 记录一个观测值
+// 生成的指标：{{ $metric.Name }}{service="{{ $.Service }}"{{ range $metric.Labels }}, {{ .Name }}=...{{ end }}} 记录值 v
+// 参数说明：{{ range $metric.Labels }}
+//   - {{ .Name }}: {{ if isEnum .Vals }}可用变量：{{ enumVars $metric.Name .Name .Vals }}{{ else }}任意字符串{{ end }}{{ end }}
+func (m *{{ $metric.Name | toPascal }}Metric) Observe(v int64, {{ labelParams $metric.Name $metric.Labels }}) {
+    m.HistogramVec.Observe(v, "{{ $.Service }}"{{ range $metric.Labels }}, {{ labelArg . $metric.Name }}{{ end }})
+}
+{{- end }}
+{{- end }}
+{{- end }}
 `
 
 // ToPascal 将 snake_case 转换为 PascalCase
@@ -195,6 +214,15 @@ func ToPascal(s string) string {
 	return strings.Join(parts, "")
 }
 
+// ToCamel 将 snake_case 转换为 camelCase（首字母小写）
+func ToCamel(s string) string {
+	pascal := ToPascal(s)
+	if len(pascal) > 0 {
+		return strings.ToLower(pascal[:1]) + pascal[1:]
+	}
+	return pascal
+}
+
 // HasMethod 检查方法列表中是否包含指定方法
 func HasMethod(methods []string, target string) bool {
 	for _, m := range methods {
@@ -205,41 +233,67 @@ func HasMethod(methods []string, target string) bool {
 	return false
 }
 
-// JoinLabels 将标签列表用逗号连接
-func JoinLabels(labels []string) string {
-	if len(labels) == 0 {
-		return ""
+// IsEnum 检查标签值是否是枚举（不是通配符 *）
+func IsEnum(vals []string) bool {
+	if len(vals) == 0 {
+		return false
 	}
-	return strings.Join(labels, ", ")
+	for _, v := range vals {
+		if v == "*" {
+			return false
+		}
+	}
+	return true
 }
 
-// LabelParams 生成标签参数字符串，例如: "label1 string, label2 string"
-func LabelParams(labels []string) string {
+// Join 将字符串切片用分隔符连接
+func Join(strs []string, sep string) string {
+	return strings.Join(strs, sep)
+}
+
+// EnumVars 生成所有枚举变量名
+func EnumVars(metricName, labelName string, vals []string) string {
+	vars := make([]string, len(vals))
+	for i, v := range vals {
+		vars[i] = ToPascal(metricName) + ToPascal(labelName) + ToPascal(v)
+	}
+	return strings.Join(vars, ", ")
+}
+
+// LabelParams 生成标签参数字符串，使用枚举类型或 string
+func LabelParams(metricName string, labels []config.Label) string {
 	if len(labels) == 0 {
 		return ""
 	}
 	params := make([]string, len(labels))
 	for i, label := range labels {
-		params[i] = label + " string"
+		if IsEnum(label.Vals) {
+			params[i] = label.Name + " " + ToPascal(metricName) + ToPascal(label.Name)
+		} else {
+			params[i] = label.Name + " string"
+		}
 	}
 	return strings.Join(params, ", ")
 }
 
-// LabelArgs 生成标签参数字符串，例如: "label1, label2"
-func LabelArgs(labels []string) string {
-	if len(labels) == 0 {
-		return ""
+// LabelArg 生成标签参数调用
+func LabelArg(label config.Label, metricName string) string {
+	if IsEnum(label.Vals) {
+		return label.Name + "." + ToCamel(metricName) + ToCamel(label.Name) + "Value()"
 	}
-	return strings.Join(labels, ", ")
+	return label.Name
 }
 
 // FuncMap 返回模板函数映射
 func FuncMap() template.FuncMap {
 	return template.FuncMap{
 		"toPascal":    ToPascal,
+		"camelCase":   ToCamel,
 		"hasMethod":   HasMethod,
-		"joinLabels":  JoinLabels,
+		"isEnum":      IsEnum,
+		"join":        Join,
+		"enumVars":    EnumVars,
 		"labelParams": LabelParams,
-		"labelArgs":   LabelArgs,
+		"labelArg":    LabelArg,
 	}
 }

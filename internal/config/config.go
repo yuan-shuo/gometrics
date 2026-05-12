@@ -10,33 +10,33 @@ import (
 
 // MetricConfig 表示 YAML 配置的根结构
 type MetricConfig struct {
-	ServiceName string      `yaml:"service_name"`
-	Subsystems  []Subsystem `yaml:"subsystems"`
+	Service string   `yaml:"service"`
+	Metrics []Metric `yaml:"metrics"`
 }
 
-// Subsystem 表示一个子系统
-type Subsystem struct {
-	Name       string      `yaml:"name"`
-	Counters   []Metric    `yaml:"counters"`
-	Gauges     []Metric    `yaml:"gauges"`
-	Histograms []Histogram `yaml:"histograms"`
+// Label 表示指标标签
+type Label struct {
+	Name string   `yaml:"name"`
+	Vals []string `yaml:"vals"`
 }
 
-// Metric 表示计数器或仪表盘指标
+// Metric 表示单个指标配置
 type Metric struct {
-	Name    string   `yaml:"name"`
-	Help    string   `yaml:"help"`
-	Labels  []string `yaml:"labels"`
+	Name    string  `yaml:"name"`
+	Help    string  `yaml:"help"`
+	Type    string  `yaml:"type"`
+	Labels  []Label `yaml:"labels"`
 	Methods []string `yaml:"methods"`
+	Buckets []float64 `yaml:"buckets"`
 }
 
-// Histogram 表示直方图指标
-type Histogram struct {
-	Name    string    `yaml:"name"`
-	Help    string    `yaml:"help"`
-	Labels  []string  `yaml:"labels"`
-	Methods []string  `yaml:"methods"`
-	Buckets []float64 `yaml:"buckets"`
+// GetLabelNames 返回标签名称列表
+func (m *Metric) GetLabelNames() []string {
+	names := make([]string, len(m.Labels))
+	for i, l := range m.Labels {
+		names[i] = l.Name
+	}
+	return names
 }
 
 // Load 从指定路径加载 YAML 配置文件

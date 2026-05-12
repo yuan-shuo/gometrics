@@ -4,7 +4,7 @@
 # 3. metrics[].name, metrics[].labels[].name
 
 # 观测服务名
-service: user_api
+service: user
 
 # 日志字段清单
 logfields:
